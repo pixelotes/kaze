@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build -trimpath ./...
+
+      - name: Docker build
+        run: docker build -t kaze-smoke .
+
+      - name: Smoke test — container serves the landing page and Subsonic ping
+        run: |
+          set -euo pipefail
+
+          mkdir -p /tmp/kaze-ci/config /tmp/kaze-ci/music
+          cat > /tmp/kaze-ci/config/config.yml <<'YAML'
+          app:
+            port: 4533
+            ui_password: "ci-smoke-test"
+            jwt_secret: "ci-smoke-secret"
+          libraries:
+            - friendly_name: "Music"
+              path: "/data/music"
+          YAML
+
+          docker run -d --rm --name kaze-smoke \
+            -p 4533:4533 \
+            -v /tmp/kaze-ci/config:/app/config:ro \
+            -v /tmp/kaze-ci/music:/data/music:ro \
+            kaze-smoke
+
+          for i in $(seq 1 30); do
+            if curl -fs -o /dev/null http://localhost:4533/; then
+              echo "kaze is up after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+          body=$(curl -fsS http://localhost:4533/)
+          grep -q '<title>kaze' <<< "$body" \
+            || { echo "::error::landing page missing <title>kaze"; exit 1; }
+          grep -q 'id="login-form"' <<< "$body" \
+            || { echo "::error::landing page missing id=login-form"; exit 1; }
+          echo "landing page present ✓"
+
+          # Subsonic auth check — wrong password should still produce a
+          # well-formed JSON envelope with status=failed.
+          fail_body=$(curl -fsS "http://localhost:4533/rest/ping.view?u=kaze&p=wrong&v=1.16.1&c=ci&f=json")
+          grep -q '"status":"failed"' <<< "$fail_body" \
+            || { echo "::error::ping with bad creds did not return status=failed"; exit 1; }
+          grep -q '"code":40' <<< "$fail_body" \
+            || { echo "::error::ping with bad creds did not return code 40"; exit 1; }
+          echo "subsonic auth rejection ✓"
+
+          # Correct creds should return status=ok.
+          ok_body=$(curl -fsS "http://localhost:4533/rest/ping.view?u=kaze&p=ci-smoke-test&v=1.16.1&c=ci&f=json")
+          grep -q '"status":"ok"' <<< "$ok_body" \
+            || { echo "::error::ping with good creds did not return status=ok"; exit 1; }
+          echo "subsonic ping ✓"
+
+      - name: Container logs
+        if: always()
+        run: docker logs kaze-smoke || true
+
+      - name: Stop container
+        if: always()
+        run: docker stop kaze-smoke || true

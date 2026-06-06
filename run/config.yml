@@ -1,0 +1,7 @@
+app:
+  port: 4533
+  ui_password: "kaze-dev"
+  jwt_secret: "dev-secret-rotate-before-prod"
+libraries:
+  - friendly_name: "Music"
+    path: "/Users/raul/Music/Submariner/Music"
