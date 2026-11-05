@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -151,6 +152,27 @@ func (s *Server) handleStreamWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
+	http.ServeFile(w, r, path)
+}
+
+// handleDownload serves a file by absolute path as an attachment, after
+// validating it sits under a configured library. Unlike handleStreamWeb it
+// tells the browser to save the file, and it refuses directories (ServeFile
+// would otherwise answer with a directory listing).
+func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if !s.isPathAllowed(path) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Disposition",
+		mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(path)}))
+	w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeFile(w, r, path)
 }
 

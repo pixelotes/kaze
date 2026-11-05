@@ -43,6 +43,7 @@ func (s *Server) routes() {
 	api.HandleFunc("/browse", s.handleBrowse).Methods("GET")
 	api.HandleFunc("/image", s.handleImage).Methods("GET")
 	api.HandleFunc("/stream", s.handleStreamWeb).Methods("GET")
+	api.HandleFunc("/download", s.handleDownload).Methods("GET")
 
 	// Subsonic REST: both .view and bare forms are accepted by spec.
 	rest := s.router.PathPrefix("/rest").Subrouter()
