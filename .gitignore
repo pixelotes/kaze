@@ -2,3 +2,21 @@
 /music/
 *.log
 .DS_Store
+
+# OS / editor
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+.env
+.env.*
+!.env.example
+
+# Go build output
+*.exe
+*.test
+*.out
+/dist/
+coverage.out
+coverage.html
